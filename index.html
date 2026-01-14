@@ -339,7 +339,7 @@
             ],
             super: [ // 高分
                 { t: "打破同溫層", i: "🔨" }, { t: "批判性思考", i: "🧠" }, 
-                { t: "橫向閱讀", i: "📖" }, { t: "演算反思", i: "🤖" }
+                { t: "廣泛閱讀", i: "📖" }, { t: "演算反思", i: "🤖" }
             ],
             rare: [ // 中分
                 { t: "以圖搜圖", i: "🔍" }, { t: "多方比對", i: "⚖️" }, 
@@ -601,9 +601,9 @@
             
             let rank = "";
             let color = "#fff";
-            if (score > 1500) { rank = "🏆 識讀駭客 (Grandmaster)"; color = "#b026ff"; }
-            else if (score > 800) { rank = "😎 查核探員 (Agent)"; color = "#00f3ff"; }
-            else { rank = "🤓 實習生 (Intern)"; color = "#888"; }
+            if (score > 1500) { rank = "🏆 媒體識讀大神 (Grandmaster)"; color = "#b026ff"; }
+            else if (score > 800) { rank = "😎 媒體識讀探員 (Agent)"; color = "#00f3ff"; }
+            else { rank = "🤓 媒體識讀實習生 (Intern)"; color = "#888"; }
             
             const rankEl = $('rank-text');
             rankEl.innerText = rank;
