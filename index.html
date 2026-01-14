@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>體感媒體識讀神：紫網防禦戰遊戲系統</title>
+<!-- 引入 Font Awesome 圖標庫 -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+    :root {
+        /* 紫色賽博龐克色系定義 */
+        --c-bg-dark: #050014;       
+        --c-primary: #b026ff;       /* 主色：霓虹紫 */
+        --c-secondary: #00f3ff;     /* 副色：賽博青 */
+        --c-accent: #ff00ff;        /* 點綴：霓虹粉 */
+        --c-danger: #ff2a2a;        /* 警告：紅 */
+        --c-heal: #00ff9d;          /* 治療：螢光綠 */
+        --c-grid: rgba(176, 38, 255, 0.15); 
+    }
+
+    body {
+        margin: 0; background: var(--c-bg-dark); color: #fff;
+        font-family: 'Microsoft JhengHei', 'Segoe UI', sans-serif; overflow: hidden;
+        height: 100vh; width: 100vw; user-select: none;
+    }
+
+    /* 遊戲容器與畫布 */
+    #game-wrapper { position: absolute; inset: 0; }
+    #mirror-layer { position: absolute; inset: 0; transform: scaleX(-1); z-index: 1; }
+    
+    /* 遊戲層特效：增加一點外發光 */
+    #game-canvas { position: absolute; inset: 0; z-index: 2; filter: drop-shadow(0 0 5px rgba(176, 38, 255, 0.2)); }
+
+    /* 視訊層處理：濾鏡營造科技感 */
+    video { 
+        position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; 
+        opacity: 0.6; filter: contrast(1.2) brightness(0.8) hue-rotate(20deg); 
+    }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    /* 背景網格動畫 */
+    .grid-bg {
+        position: absolute; inset: 0; z-index: 0;
+        background-image: linear-gradient(var(--c-grid) 1px, transparent 1px),
+                          linear-gradient(90deg, var(--c-grid) 1px, transparent 1px);
+        background-size: 60px 60px; pointer-events: none;
+        box-shadow: inset 0 0 100px #000;
+    }
+
+    /* UI 層 */
+    #ui-layer {
+        position: absolute; inset: 0; z-index: 10; pointer-events: none;
+        display: flex; flex-direction: column; justify-content: space-between;
+    }
+
+    /* 頂部資訊列 */
+    #top-bar {
+        padding: 20px; display: flex; justify-content: space-between; align-items: center;
+        background: linear-gradient(to bottom, rgba(30,0,60,0.9), transparent);
+        font-weight: bold; font-size: 24px; text-shadow: 0 0 10px var(--c-primary);
+        border-bottom: 1px solid rgba(176, 38, 255, 0.3);
+        opacity: 0; transition: 0.5s; pointer-events: auto;
+    }
+    .left-group { display: flex; gap: 20px; align-items: center; }
+    .score-box { color: var(--c-secondary); display: flex; gap: 10px; align-items: center; }
+    .score-val { font-size: 32px; color: #fff; font-family: 'Courier New', monospace; text-shadow: 0 0 15px var(--c-secondary); }
+    
+    .lives-box { color: var(--c-accent); display: flex; gap: 5px; filter: drop-shadow(0 0 5px var(--c-accent)); }
+    .heart { animation: beat 1.5s infinite; transition: transform 0.2s; }
+    .heart.gained { animation: pop-heart 0.5s ease-out; color: var(--c-heal); } 
+    
+    @keyframes beat { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.15); opacity: 1; } }
+    @keyframes pop-heart { 0% { transform: scale(1); } 50% { transform: scale(2.0); } 100% { transform: scale(1); } }
+
+    #sound-btn {
+        background: rgba(176, 38, 255, 0.2);
+        border: 1px solid var(--c-primary);
+        color: #fff; padding: 5px 10px; border-radius: 5px;
+        cursor: pointer; font-size: 18px; transition: 0.3s;
+    }
+    #sound-btn:hover { background: var(--c-primary); box-shadow: 0 0 15px var(--c-primary); }
+
+    /* --- 新版 HUD 啟動面板樣式 --- */
+    .panel-hud {
+        position: absolute; top: 50%; left: 50%; 
+        transform: translate(-50%, -50%);
+        width: 90%; max-width: 650px;
+        background: rgba(10, 5, 20, 0.85); /* 深邃背景 */
+        border: 1px solid rgba(176, 38, 255, 0.3);
+        padding: 40px;
+        border-radius: 10px;
+        box-shadow: 0 0 50px rgba(176, 38, 255, 0.2), inset 0 0 100px rgba(0,0,0,0.8);
+        backdrop-filter: blur(15px);
+        text-align: center;
+        z-index: 20; pointer-events: auto;
+        /* 賽博龐克切角 */
+        clip-path: polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px);
+    }
+    /* 角落裝飾線 */
+    .panel-hud::before, .panel-hud::after {
+        content: ''; position: absolute; width: 30px; height: 30px;
+        border: 3px solid var(--c-secondary); transition: 0.3s; pointer-events: none;
+    }
+    .panel-hud::before { top: 0; left: 0; border-right: none; border-bottom: none; }
+    .panel-hud::after { bottom: 0; right: 0; border-left: none; border-top: none; }
+
+    .hud-title {
+        font-size: clamp(2rem, 5vw, 3.5rem); margin: 0 0 10px 0; text-transform: uppercase;
+        background: linear-gradient(135deg, #fff 0%, var(--c-secondary) 50%, var(--c-primary) 100%);
+        -webkit-background-clip: text; color: transparent;
+        text-shadow: 0 0 20px rgba(176, 38, 255, 0.6); letter-spacing: 2px;
+    }
+    .hud-subtitle { color: #aaa; font-size: 1.1rem; margin-bottom: 30px; letter-spacing: 1px; }
+
+    /* 卡片式說明區 */
+    .cards-container { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 30px; }
+    .info-card {
+        background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
+        padding: 15px 10px; border-radius: 8px;
+        display: flex; flex-direction: column; align-items: center; gap: 10px; transition: 0.3s;
+    }
+    .info-card:hover { transform: translateY(-5px); background: rgba(255,255,255,0.08); }
+    .info-card i { font-size: 2rem; margin-bottom: 5px; }
+    .info-card h3 { margin: 0; font-size: 1rem; color: #fff; }
+    .info-card span { font-size: 0.85rem; opacity: 0.8; }
+
+    .card-bad { border-bottom: 3px solid var(--c-danger); }
+    .card-bad i { color: var(--c-danger); filter: drop-shadow(0 0 5px var(--c-danger)); }
+    
+    .card-super { border-bottom: 3px solid var(--c-primary); }
+    .card-super i { color: var(--c-primary); filter: drop-shadow(0 0 5px var(--c-primary)); }
+    
+    .card-heal { border-bottom: 3px solid var(--c-heal); }
+    .card-heal i { color: var(--c-heal); filter: drop-shadow(0 0 8px var(--c-heal)); animation: beat 1s infinite; }
+
+    .hud-tip {
+        color: var(--c-heal); font-size: 0.95rem; margin-bottom: 30px;
+        background: rgba(0, 255, 157, 0.05); padding: 8px 15px;
+        border-radius: 50px; border: 1px solid rgba(0, 255, 157, 0.2);
+        display: inline-block;
+    }
+
+    /* 升級版按鈕 */
+    .btn-cyber {
+        position: relative; background: var(--c-primary);
+        color: #fff; font-size: 1.5rem; font-weight: bold;
+        padding: 15px 60px; border: none; cursor: pointer;
+        clip-path: polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px);
+        transition: 0.3s; overflow: hidden;
+        box-shadow: 0 0 30px rgba(176, 38, 255, 0.5);
+    }
+    .btn-cyber::before {
+        content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+        transform: skewX(-20deg); animation: shine 3s infinite;
+    }
+    @keyframes shine { 0% { left: -100%; } 20% { left: 200%; } 100% { left: 200%; } }
+    .btn-cyber:hover { transform: scale(1.05); background: #d600ff; box-shadow: 0 0 50px var(--c-primary); }
+    .btn-cyber:active { transform: scale(0.95); }
+
+    /* Game Over 畫面樣式 (共用部分) */
+    .game-over-content { text-align: center; }
+    .tip-box {
+        margin-top: 20px; padding: 15px;
+        background: rgba(255, 255, 255, 0.1);
+        border-left: 4px solid var(--c-secondary);
+        font-size: 0.95rem; color: #eee; text-align: left; max-width: 400px; margin-left: auto; margin-right: auto;
+    }
+
+    .hidden { display: none !important; }
+
+    .mascot-container {
+        position: absolute; bottom: 40px; left: 20px;
+        width: 140px; height: auto;
+        z-index: 100; pointer-events: auto;
+        cursor: grab; user-select: none;
+        transition: transform 0.1s;
+    }
+    .mascot-container img { width: 100%; display: block; filter: drop-shadow(0 0 5px var(--c-primary)); }
+    .mascot-container:hover img { animation: neon-pulse 1.5s infinite ease-in-out; }
+    @keyframes neon-pulse { 0% { filter: drop-shadow(0 0 5px var(--c-primary)); } 50% { filter: drop-shadow(0 0 15px var(--c-accent)); } 100% { filter: drop-shadow(0 0 5px var(--c-primary)); } }
+
+    .footer {
+        position: absolute; bottom: 10px; width: 100%;
+        text-align: center; color: rgba(255, 255, 255, 0.4);
+        font-size: 12px; pointer-events: none; z-index: 25;
+    }
+
+    @media (max-width: 768px) {
+        .panel-hud { width: 90%; padding: 25px 15px; }
+        .cards-container { grid-template-columns: 1fr; gap: 10px; }
+        .info-card { flex-direction: row; padding: 10px 20px; justify-content: flex-start; }
+        .info-card i { font-size: 1.5rem; margin: 0 15px 0 0; }
+        .hud-title { font-size: 1.8rem; }
+        #top-bar { padding: 10px 15px; flex-direction: row; flex-wrap: wrap; }
+        .mascot-container { width: 100px; bottom: 35px; left: 10px; }
+    }
+</style>
+</head>
+<body>
+    <div class="grid-bg"></div>
+    
+    <div id="game-wrapper">
+        <div id="mirror-layer">
+            <video id="vid" autoplay playsinline muted></video>
+            <canvas id="motion-cvs"></canvas>
+        </div>
+        <canvas id="game-canvas"></canvas>
+    </div>
+    
+    <div id="ui-layer">
+        <div id="top-bar">
+            <div class="left-group">
+                <button id="sound-btn" onclick="toggleMute()"><i class="fas fa-volume-up"></i></button>
+                <div class="score-box">
+                    <i class="fas fa-brain"></i> 思辨力：<span class="score-val" id="scoreDisplay">0</span>
+                </div>
+            </div>
+            <div class="lives-box" id="livesDisplay">
+                <i class="fas fa-heart heart"></i><i class="fas fa-heart heart"></i><i class="fas fa-heart heart"></i>
+            </div>
+        </div>
+
+        <div id="mascot" class="mascot-container" title="LiyuChillGuy">
+            <img src="image/LiyuChillGuy.svg" draggable="false" 
+                 onerror="this.src='https://cdn-icons-png.flaticon.com/512/4712/4712109.png'" 
+                 alt="LiyuChillGuy">
+        </div>
+
+        <div class="footer">Copyright © Liyuchiutiger Gongminshen</div>
+
+        <!-- 啟動畫面 (New HUD Design) -->
+        <div class="panel-hud" id="start-panel">
+            <h1 class="hud-title">體感媒體識讀神：<br>紫網防禦戰遊戲系統</h1>
+            <p class="hud-subtitle">CYBER MEDIA LITERACY DEFENSE</p>
+            
+            <div class="cards-container">
+                <!-- 地雷卡片 -->
+                <div class="info-card card-bad">
+                    <i class="fas fa-skull-crossbones"></i>
+                    <div>
+                        <h3>紅色地雷</h3>
+                        <span style="color:#aaa">假訊息 (-1命)</span>
+                    </div>
+                </div>
+                
+                <!-- 知識卡片 -->
+                <div class="info-card card-super">
+                    <i class="fas fa-brain"></i>
+                    <div>
+                        <h3>紫色知識</h3>
+                        <span style="color:#aaa">獨立思考 (+分)</span>
+                    </div>
+                </div>
+                
+                <!-- 補血卡片 -->
+                <div class="info-card card-heal">
+                    <i class="fas fa-heart"></i>
+                    <div>
+                        <h3>綠色救援</h3>
+                        <span style="color:#aaa">補血包 (+1命)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="hud-tip">
+                <i class="fas fa-exclamation-circle"></i> 戰術提示：看到 <span style="font-weight:bold; color:#fff;">💖</span> 不用猶豫，直接碰觸補血！
+            </div>
+            
+            <br>
+            <button class="btn-cyber" onclick="initGame()">
+                啟動連結 START
+            </button>
+        </div>
+
+        <!-- 遊戲結束畫面 -->
+        <div class="panel-hud hidden" id="game-over-panel">
+            <h1 class="hud-title" style="color: var(--c-danger);">SYSTEM FAILURE</h1>
+            <div class="game-over-content">
+                <p>本次思辨力結算</p>
+                <h2 style="font-size: 4rem; margin: 0 0 20px; color: #fff; text-shadow: 0 0 20px var(--c-primary);" id="final-score">0</h2>
+                <div id="rank-text" style="color: var(--c-secondary); font-size: 1.3rem; margin-bottom: 20px; font-weight:bold;"></div>
+                
+                <div class="tip-box">
+                    <strong><i class="fas fa-lightbulb"></i> 識讀小教室：</strong><br>
+                    <span id="knowledge-tip"></span>
+                </div>
+                <br>
+                <button class="btn-cyber" onclick="restartGame()">重啟系統 RESTART</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const $ = id => document.getElementById(id);
+        const vid = $('vid');
+        const mCvs = $('motion-cvs'), mCtx = mCvs.getContext('2d');
+        const gCvs = $('game-canvas'), gCtx = gCvs.getContext('2d');
+        const tmpCvs = document.createElement('canvas'), tmpCtx = tmpCvs.getContext('2d', { willReadFrequently: true });
+        
+        // --- 吉祥物拖曳 ---
+        const mascot = $('mascot');
+        let isDragging = false;
+        let startX, startY, initialLeft, initialTop;
+
+        const startDrag = (e) => {
+            isDragging = true;
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+            const rect = mascot.getBoundingClientRect();
+            startX = clientX; startY = clientY;
+            initialLeft = rect.left; initialTop = rect.top;
+            mascot.style.bottom = 'auto'; mascot.style.right = 'auto';
+            mascot.style.left = initialLeft + 'px'; mascot.style.top = initialTop + 'px';
+        };
+        const onDrag = (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+            mascot.style.left = (initialLeft + (clientX - startX)) + 'px';
+            mascot.style.top = (initialTop + (clientY - startY)) + 'px';
+        };
+        const stopDrag = () => { isDragging = false; };
+        mascot.addEventListener('mousedown', startDrag);
+        mascot.addEventListener('touchstart', startDrag, {passive: false});
+        window.addEventListener('mousemove', onDrag);
+        window.addEventListener('touchmove', onDrag, {passive: false});
+        window.addEventListener('mouseup', stopDrag);
+        window.addEventListener('touchend', stopDrag);
+
+        // --- 遊戲資料庫 (教育內容) ---
+        const GAME_DATA = {
+            heal: [ // 【直接補血項目】
+                { t: "超級補血", i: "💖" }, 
+                { t: "生命恢復", i: "💖" }, 
+                { t: "緊急救援", i: "🚑" }, 
+                { t: "數位素養", i: "💊" } 
+            ],
+            super: [ // 高分
+                { t: "打破同溫層", i: "🔨" }, { t: "批判性思考", i: "🧠" }, 
+                { t: "橫向閱讀", i: "📖" }, { t: "演算反思", i: "🤖" }
+            ],
+            rare: [ // 中分
+                { t: "以圖搜圖", i: "🔍" }, { t: "多方比對", i: "⚖️" }, 
+                { t: "追溯來源", i: "🔗" }, { t: "專家查證", i: "👨‍🏫" }
+            ],
+            bad: [ // 扣命
+                { t: "深偽 Deepfake", i: "🎭" }, { t: "帶風向", i: "🌪️" }, 
+                { t: "釣魚式標題", i: "🎣" }, { t: "內容農場", i: "🏭" },
+                { t: "認知偏誤", i: "😵" }, { t: "同溫層", i: "🥚" },
+                { t: "一頁式詐騙", i: "💸" }
+            ],
+            tips: [ 
+                "「同溫層」會讓你只看到想看的資訊，記得偶爾看看不同立場的報導喔！",
+                "看到標題先別氣！這是「釣魚式標題」騙點擊的慣用手法。",
+                "圖片影片也能造假！善用「以圖搜圖」或觀察手指、背景細節來破解 Deepfake。",
+                "「內容農場」文章通常沒有作者、來源不明且排版混亂，小心別轉傳！",
+                "演算法會餵食你喜歡的內容，容易造成「資訊偏食」，要主動搜尋不同資訊。"
+            ]
+        };
+
+        // --- 遊戲邏輯 ---
+        let w, h, ch;
+        let prevData = null;
+        let gameActive = false;
+        let score = 0;
+        let lives = 3;
+        const MAX_LIVES = 5; 
+        let nextLifeScore = 1000; 
+        let items = []; 
+        let particles = [];
+        let floatingTexts = []; 
+        let motionPoints = []; 
+        let animationFrameId;
+
+        class SoundManager {
+            constructor() { this.ctx = null; this.muted = false; this.masterGain = null; }
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    this.masterGain = this.ctx.createGain();
+                    this.masterGain.gain.value = 0.3; 
+                    this.masterGain.connect(this.ctx.destination);
+                } else if (this.ctx.state === 'suspended') this.ctx.resume();
+            }
+            toggleMute() {
+                this.muted = !this.muted;
+                $('sound-btn').innerHTML = this.muted ? '<i class="fas fa-volume-mute"></i>' : '<i class="fas fa-volume-up"></i>';
+                if(this.masterGain) this.masterGain.gain.setValueAtTime(this.muted ? 0 : 0.3, this.ctx.currentTime);
+            }
+            playTone(freq, type, dur, slideTo = null, vol = 0.5) {
+                if (!this.ctx || this.muted) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type; osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                if (slideTo) osc.frequency.linearRampToValueAtTime(slideTo, this.ctx.currentTime + dur);
+                gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
+                osc.connect(gain); gain.connect(this.masterGain);
+                osc.start(); osc.stop(this.ctx.currentTime + dur);
+            }
+            playStart() { this.playTone(220, 'sawtooth', 0.1); setTimeout(() => this.playTone(880, 'sine', 0.6), 100); }
+            playGood() { this.playTone(880, 'sine', 0.1, 1200); }
+            playRare() { this.playTone(1200, 'square', 0.1, 1800, 0.2); }
+            playSuper() { 
+                this.playTone(400, 'sawtooth', 0.1); 
+                setTimeout(() => this.playTone(600, 'sawtooth', 0.1), 100); 
+                setTimeout(() => this.playTone(1200, 'square', 0.4), 200); 
+            }
+            playBad() { this.playTone(150, 'sawtooth', 0.4, 50); } 
+            playHeal() { // 吃到愛心的音效
+                this.playTone(400, 'sine', 0.1); 
+                setTimeout(() => this.playTone(600, 'sine', 0.1), 100);
+                setTimeout(() => this.playTone(800, 'sine', 0.4, 1200), 200);
+            } 
+            playPowerUp() { 
+                this.playTone(500, 'square', 0.1, 800); 
+                setTimeout(() => this.playTone(800, 'square', 0.3, 1500), 100);
+            }
+            playGameOver() { 
+                this.playTone(300, 'sawtooth', 0.4, 100); 
+                setTimeout(() => this.playTone(100, 'sawtooth', 1.0), 400); 
+            }
+        }
+        const sfx = new SoundManager();
+
+        const CFG = { cw: 64, thresh: 20, spawnRate: 15, gravity: 4.5, hitRadius: 50 };
+
+        class Item {
+            constructor() {
+                this.r = Math.random();
+                this.type = ''; this.icon = ''; this.color = '#fff'; this.text = '';
+                
+                // 動態機率：命越少，補血越多
+                let healChance = 0.05; // 基礎 5%
+                if (lives <= 1) healChance = 0.15; // 殘血時 15%
+                else if (lives === 2) healChance = 0.10; // 半血時 10%
+
+                if (this.r > (1.0 - healChance)) { 
+                    this.type = 'heal'; this.val = 0; 
+                    const d = GAME_DATA.heal[Math.floor(Math.random()*GAME_DATA.heal.length)];
+                    this.icon = d.i; this.text = d.t;
+                    this.color = '#00ff9d'; // 螢光綠
+                    this.speed = CFG.gravity * 1.5; // 補血掉快一點點
+                    this.glow = true;
+                }
+                else if (this.r > 0.88) { // 高分
+                    this.type = 'super'; this.val = 150; 
+                    const d = GAME_DATA.super[Math.floor(Math.random()*GAME_DATA.super.length)];
+                    this.icon = d.i; this.text = d.t;
+                    this.color = '#b026ff'; 
+                    this.speed = CFG.gravity * 1.8; 
+                    this.glow = true;
+                }
+                else if (this.r > 0.74) { // 中分
+                    this.type = 'rare'; this.val = 80; 
+                    const d = GAME_DATA.rare[Math.floor(Math.random()*GAME_DATA.rare.length)];
+                    this.icon = d.i; this.text = d.t;
+                    this.color = '#00f3ff'; 
+                    this.speed = CFG.gravity * 1.4; 
+                    this.glow = true;
+                }
+                else if (this.r > 0.50) { // 扣命
+                    this.type = 'bad'; this.val = -1; 
+                    const d = GAME_DATA.bad[Math.floor(Math.random()*GAME_DATA.bad.length)];
+                    this.icon = d.i; this.text = d.t;
+                    this.color = '#ff2a2a'; 
+                    this.speed = CFG.gravity * 1.0; 
+                    this.glow = false;
+                }
+                else { // 普通
+                    this.type = 'normal'; this.val = 20; 
+                    this.icon = '🔎'; this.text = '查證';
+                    this.color = '#ffffff'; 
+                    this.speed = CFG.gravity * 1.1; 
+                    this.glow = false;
+                }
+                
+                this.size = 55; 
+                this.x = Math.random() * (w - 100) + 50;
+                this.y = -70;
+                this.active = true;
+                this.angle = 0;
+                this.rotSpeed = (Math.random() - 0.5) * 0.05;
+            }
+            update() { this.y += this.speed; this.angle += this.rotSpeed; if (this.y > h+50) this.active = false; }
+            draw(ctx) {
+                ctx.save(); 
+                ctx.translate(this.x, this.y); 
+
+                if (this.glow || this.type === 'heal') {
+                    ctx.shadowBlur = this.type === 'heal' ? 30 : 20; 
+                    ctx.shadowColor = this.color;
+                }
+
+                ctx.save();
+                ctx.rotate(this.angle);
+                
+                ctx.beginPath();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 3;
+                if (this.type === 'bad') ctx.rect(-25, -25, 50, 50);
+                else ctx.arc(0, 0, 30, 0, Math.PI*2);
+                ctx.stroke();
+
+                ctx.font = `${this.size}px Arial`; 
+                ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                ctx.fillStyle = "#fff";
+                ctx.fillText(this.icon, 0, 4);
+                ctx.restore(); 
+
+                ctx.shadowBlur = 0; 
+                ctx.font = "bold 20px 'Microsoft JhengHei'";
+                ctx.textAlign = "center"; ctx.textBaseline = "top";
+                ctx.fillStyle = this.color;
+                ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(0,0,0,0.9)";
+                
+                const textY = 40;
+                ctx.strokeText(this.text, 0, textY);
+                ctx.fillText(this.text, 0, textY);
+                ctx.restore(); 
+            }
+        }
+
+        class FloatingText {
+            constructor(x, y, text, color, size) {
+                this.x = x; this.y = y; this.text = text; this.color = color;
+                this.life = 1.0; this.vy = -3; this.size = size;
+            }
+            update() { this.y += this.vy; this.life -= 0.02; }
+            draw(ctx) {
+                ctx.save(); ctx.globalAlpha = Math.max(0, this.life);
+                ctx.font = `bold ${this.size}px 'Microsoft JhengHei', sans-serif`;
+                ctx.textAlign = "center"; 
+                ctx.shadowColor = this.color; ctx.shadowBlur = 10;
+                
+                const lines = this.text.split('\n');
+                lines.forEach((line, i) => {
+                    ctx.strokeStyle = "black"; ctx.lineWidth = 4;
+                    ctx.strokeText(line, this.x, this.y + (i * this.size * 1.1));
+                    ctx.fillStyle = this.color;
+                    ctx.fillText(line, this.x, this.y + (i * this.size * 1.1));
+                });
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y; this.color = color;
+                this.vx = (Math.random()-0.5)*15; this.vy = (Math.random()-0.5)*15; this.life = 1;
+                this.size = Math.random() * 6 + 2;
+            }
+            update() { this.x+=this.vx; this.y+=this.vy; this.life-=0.04; }
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.life; ctx.fillStyle = this.color;
+                ctx.shadowBlur = 10; ctx.shadowColor = this.color;
+                if (Math.random() > 0.5) ctx.fillRect(this.x, this.y, this.size, this.size); 
+                else { ctx.beginPath(); ctx.arc(this.x, this.y, this.size/2, 0, Math.PI*2); ctx.fill(); }
+                ctx.restore();
+            }
+        }
+
+        const resize = () => {
+            w = window.innerWidth; h = window.innerHeight;
+            [mCvs, gCvs].forEach(c => { c.width = w; c.height = h; });
+            if (vid.videoWidth) {
+                ch = Math.floor(CFG.cw * (vid.videoHeight / vid.videoWidth));
+                tmpCvs.width = CFG.cw; tmpCvs.height = ch;
+            }
+        };
+        window.onresize = resize;
+
+        async function initGame() {
+            sfx.init(); sfx.playStart();
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width:1280, height:720 }, audio: false });
+                vid.srcObject = stream;
+                vid.onloadedmetadata = () => { vid.play(); resize(); startGameLoop(); };
+            } catch (e) { alert("無法開啟攝影機，請檢查瀏覽器權限或使用其他裝置。"); }
+        }
+
+        function startGameLoop() {
+            $('start-panel').classList.add('hidden');
+            $('game-over-panel').classList.add('hidden');
+            $('top-bar').style.opacity = 1;
+            score = 0; lives = 3; nextLifeScore = 1000;
+            items = []; particles = []; floatingTexts = [];
+            CFG.spawnRate = 15;
+            updateUI(); gameActive = true; loop();
+        }
+
+        function restartGame() { sfx.init(); sfx.playStart(); startGameLoop(); }
+        function toggleMute() { sfx.toggleMute(); }
+        
+        function gameOver() {
+            gameActive = false; sfx.playGameOver();
+            $('final-score').innerText = score;
+            
+            let rank = "";
+            let color = "#fff";
+            if (score > 1500) { rank = "🏆 識讀駭客 (Grandmaster)"; color = "#b026ff"; }
+            else if (score > 800) { rank = "😎 查核探員 (Agent)"; color = "#00f3ff"; }
+            else { rank = "🤓 實習生 (Intern)"; color = "#888"; }
+            
+            const rankEl = $('rank-text');
+            rankEl.innerText = rank;
+            rankEl.style.color = color;
+
+            const tip = GAME_DATA.tips[Math.floor(Math.random() * GAME_DATA.tips.length)];
+            $('knowledge-tip').innerText = tip;
+            
+            $('game-over-panel').classList.remove('hidden');
+            $('top-bar').style.opacity = 0;
+        }
+
+        function updateUI() {
+            $('scoreDisplay').innerText = score;
+            const hearts = Array(lives).fill('<i class="fas fa-heart heart"></i>').join('');
+            $('livesDisplay').innerHTML = hearts;
+        }
+
+        function gainLifeEffect() {
+            const hearts = document.querySelectorAll('.heart');
+            if (hearts.length > 0) hearts[hearts.length - 1].classList.add('gained');
+        }
+
+        function detectMotion() {
+            if (!vid.videoWidth) return;
+            tmpCtx.drawImage(vid, 0, 0, CFG.cw, ch);
+            const d = tmpCtx.getImageData(0, 0, CFG.cw, ch).data;
+            motionPoints = [];
+            mCtx.clearRect(0, 0, w, h);
+            
+            if (prevData) {
+                mCtx.fillStyle = "rgba(176, 38, 255, 0.3)";
+                for (let y=0; y<ch; y++) {
+                    for (let x=0; x<CFG.cw; x++) {
+                        const i = (y*CFG.cw+x)*4;
+                        const diff = Math.abs((d[i]+d[i+1]+d[i+2])/3 - (prevData[i]+prevData[i+1]+prevData[i+2])/3);
+                        if (diff > CFG.thresh) {
+                            mCtx.fillRect(x*(w/CFG.cw), y*(h/ch), w/CFG.cw, h/ch);
+                            motionPoints.push({x: (CFG.cw-x-1)*(w/CFG.cw), y: y*(h/ch)});
+                        }
+                    }
+                }
+            }
+            prevData = d;
+        }
+
+        let fc = 0;
+        function loop() {
+            if (!gameActive) return;
+            detectMotion(); gCtx.clearRect(0, 0, w, h); fc++;
+
+            if (fc % CFG.spawnRate === 0) {
+                items.push(new Item());
+                if(Math.random()>0.7 && score > 500) items.push(new Item());
+                if (fc % 500 === 0 && CFG.spawnRate > 6) CFG.spawnRate--;
+            }
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                let it = items[i]; it.update(); it.draw(gCtx);
+                let hit = false;
+                if (!it.active) { items.splice(i,1); continue; }
+                
+                for (let mp of motionPoints) {
+                    if ((it.x-mp.x)**2 + (it.y-mp.y)**2 < CFG.hitRadius**2) { hit = true; break; }
+                }
+                
+                if (hit) {
+                    let displayText = "";
+                    let fontSize = 30;
+
+                    if (it.type === 'heal') {
+                        // 【補血邏輯】
+                        if (lives < MAX_LIVES) {
+                            lives++; 
+                            gainLifeEffect();
+                            displayText = `${it.text}\n+1命`;
+                        } else {
+                            score += 50; 
+                            displayText = `${it.text}\n+50`;
+                        }
+                        sfx.playHeal();
+                        fontSize = 32;
+                        floatingTexts.push(new FloatingText(it.x, it.y, displayText, it.color, fontSize));
+                    } else if (it.type === 'bad') {
+                        lives--; 
+                        sfx.playBad();
+                        displayText = `小心${it.text}!\n-1命`;
+                        floatingTexts.push(new FloatingText(it.x, it.y, displayText, '#fff', 30));
+                        if (lives<=0) gameOver();
+                    } else {
+                        score += it.val;
+                        // 積分獎勵
+                        if (score >= nextLifeScore) {
+                            if (lives < MAX_LIVES) {
+                                lives++;
+                                gainLifeEffect();
+                                floatingTexts.push(new FloatingText(w/2, h/2, "LEVEL UP!\n+1 命", "#00ff9d", 50));
+                                sfx.playPowerUp();
+                            }
+                            nextLifeScore += 1000; 
+                        }
+
+                        if (it.type==='super') { sfx.playSuper(); fontSize=40; }
+                        else if (it.type==='rare') { sfx.playRare(); fontSize=34; }
+                        else { sfx.playGood(); fontSize=28; }
+                        displayText = `${it.text}\n+${it.val}`;
+                        floatingTexts.push(new FloatingText(it.x, it.y, displayText, it.color, fontSize));
+                    }
+                    createExplosion(it.x, it.y, it.color); updateUI(); items.splice(i, 1);
+                }
+            }
+            particles.forEach((p,i) => { p.update(); p.draw(gCtx); if(p.life<=0) particles.splice(i,1); });
+            floatingTexts.forEach((t,i) => { t.update(); t.draw(gCtx); if(t.life<=0) floatingTexts.splice(i,1); });
+            animationFrameId = requestAnimationFrame(loop);
+        }
+
+        function createExplosion(x, y, c) {
+            for(let i=0; i<12; i++) particles.push(new Particle(x, y, c));
+            gCtx.save(); 
+            gCtx.beginPath(); gCtx.strokeStyle=c; gCtx.lineWidth=3; 
+            gCtx.arc(x,y,50,0,Math.PI*2); gCtx.stroke(); 
+            gCtx.beginPath(); gCtx.strokeStyle="#fff"; gCtx.lineWidth=1; 
+            gCtx.arc(x,y,30,0,Math.PI*2); gCtx.stroke();
+            gCtx.restore();
+        }
+    </script>
+</body>
+</html>
